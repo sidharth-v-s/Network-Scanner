@@ -33,8 +33,8 @@ A Python-based network security toolkit with a modern GUI interface built using 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/username/network-security-scanner.git
-   cd network-security-scanner
+   git clone https://github.com/sidharth-v-s/Network-Scanner-Tool.git
+   cd Network-Scanner-Tool
    ```
 
 2. Create and activate a virtual environment (recommended):
