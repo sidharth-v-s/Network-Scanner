@@ -1,117 +1,124 @@
-# Network Security Scanner
+# Network Security Scanner v3
 
-A Python-based network security toolkit with a modern GUI interface built using DearPyGui. This application provides essential security scanning tools to help security professionals, network administrators, and cybersecurity enthusiasts assess network vulnerabilities.
+A GUI-based recon toolkit built with Python and DearPyGui, for network
+reconnaissance and security assessment on systems you own or are
+explicitly authorized to test.
+
+![Dashboard](screenshots/dashboard.png)
+
+## What's new in v3
+
+This is a full rewrite of the original scanner:
+
+- **Persistent sidebar navigation** instead of screens that get torn down
+  and rebuilt on every click
+- **Input validation** for IPs, CIDRs, ranges, hostnames, and URLs before
+  anything is shelled out to `nmap` or `requests`
+- **Live-updating result tables** (color-coded by port state / HTTP
+  status) instead of a single scrolling text blob
+- **Real cancellation** on every scan type via a Stop button — not just
+  the web scanner
+- **Concurrent** web directory scanning (thread pool instead of one
+  request at a time)
+- **NSE script groups** (Discovery / Enumeration / Vulnerability /
+  Auth-Brute) selectable on the port scanner
+- **Quick Recon** — a guided workflow that ping-sweeps a subnet and then
+  automatically port-scans every live host it finds
+- **Scan History** — a local, persistent log of past scans
+  (`~/.network_scanner/history.json`) so you can pick up where you left
+  off across sessions
+- **Export** any result set to CSV, JSON, or TXT
+  (`~/network_scanner_exports/`)
 
 ## Features
 
-### 🔍 Host Discovery
-- Scan local or remote networks for active hosts
-- Supports subnet scanning with CIDR notation (e.g., 192.168.1.0/24)
-- Fast, multi-threaded scanning capabilities
+### Host Discovery
 
-### 🔌 Port Scanner
-- Identify open ports on target systems
-- Service and version detection
-- Operating system fingerprinting when possible
-- Pre-configured for common ports (21, 22, 23, 25, 53, 66, 80, 110, 443, 8000)
+- Ping-sweeps a subnet/CIDR/range to find live hosts
+- Resolves hostnames, MAC addresses, and hardware vendors
+- Live progress bar and cancellable mid-scan
 
-### 🌐 Web Directory Scanner
-- Discover hidden directories and files on web servers
-- Customizable with your own wordlists
-- Threaded scanning for improved performance
-- Easy-to-read results display
+![Host Discovery](screenshots/host_discovery.png)
 
+### Port Scanner
 
+- Scan profiles: Quick, SYN, Version Detection, OS Detection,
+  Comprehensive (`-A`), UDP, all-65535, Vulnerability (NSE `vuln`), etc.
+- Optional NSE script groups layered on top of any profile
+- OS fingerprint + MAC/vendor panel
+- Color-coded open/closed/filtered port table
+
+![Port Scanner](screenshots/port_scanner.png)
+
+### Web Directory Scanner
+
+- Concurrent brute-force of directories/files with a custom wordlist
+- Optional extension list (`.php,.bak,.zip`) appended to every candidate
+- Configurable thread count
+- Color-coded results by HTTP status class (2xx/3xx/4xx/5xx)
+
+![Web Directory Scanner](screenshots/web_directory_scan.png)
+
+### Quick Recon
+
+- One click: sweep a subnet, then auto port-scan (top 100 ports) every
+  host found, streamed into a per-host tree view
+
+![Quick Recon](screenshots/quick_recon.png)
+
+### Scan History
+
+- Every completed scan is logged locally with timestamp, type, target,
+  and a one-line summary
+
+![Scan History](screenshots/scan_history.png)
+
+## Requirements
+
+- Python 3.9+
+- [Nmap](https://nmap.org/download.html) installed and on your `PATH`
+  (required for Host Discovery and Port Scanner)
+- A wordlist for the Web Directory Scanner — e.g.
+  [SecLists](https://github.com/danielmiessler/SecLists)
 
 ## Installation
 
-### Prerequisites
-- Python 3.6+
-- pip (Python package manager)
+```bash
+git clone <this-repo>
+cd network-scanner
+pip install -r requirements.txt
+python main.py
+```
 
-### Setup
+## Project layout
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/sidharth-v-s/Network-Scanner.git
-   cd Network-Scanner-Tool
-   ```
+```
+main.py            entrypoint — builds the window and registers screens
+app_shell.py        sidebar nav + content-area shell, dashboard screen
+scan_engine.py       UI-agnostic scan logic: validation, nmap wrapper,
+                      web dir scanner, NSE helpers, export
+scan_history.py      persistent local scan log
+themes.py            dark theme, colors, widget styling
+ui_widgets.py         shared widgets (cards, buttons, status pills)
+hostlookup.py        Host Discovery screen
+portscanner.py       Port Scanner screen
+webdir.py            Web Directory Scanner screen
+quickrecon.py        Quick Recon screen
+history_view.py      Scan History screen
+code.py              backwards-compatible wrappers + CLI mode
+```
 
-2. Create and activate a virtual environment (recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+## Ethical usage
 
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+This tool is for security professionals, network administrators, and
+learners to test systems they own or have explicit written authorization
+to assess.
 
-4. Run the application:
-   ```bash
-   python main.py
-   ```
-
-### Dependencies
-
-- **DearPyGui**: For the modern GUI interface
-- **python-nmap**: For network scanning capabilities
-- **requests**: For HTTP requests and web directory scanning
-- **concurrent.futures**: For multi-threading support
-- **tkinter**: For file dialogs
-
-## Usage
-
-### Host Lookup
-1. Select "Host Look Up" from the main menu
-2. Enter the subnet to scan (e.g., 192.168.1.0/24)
-3. Click "Scan" and wait for the results
-
-### Port Scanner
-1. Select "Port Scanner" from the main menu
-2. Enter the IP address to scan
-3. Click "Scan" to begin port scanning
-
-### Web Directory Scanner
-1. Select "Web Subdirectory Finder" from the main menu
-2. Enter the target URL (e.g., https://example.com)
-3. Browse and select a wordlist file
-4. Click "Scan" to begin the directory scan
-
-## Customization
-
-### Adding Custom Wordlists
-You can use any text file as a wordlist for the Web Directory Scanner. Each line in the file should contain a directory or file name to check on the target website.
-
-### Modifying Scanned Ports
-To modify which ports are scanned, edit the `port_scanner` function in `code.py` and update the port list in the `np.scan()` function call.
-
-## Security and Legal Considerations
-
-⚠️ **Important Notice**
-
-This tool is intended for authorized security testing, educational purposes, and system administrators managing their own networks. Using this tool against systems without explicit permission is illegal in many jurisdictions and violates computer fraud and abuse laws.
-
-- **Always obtain written permission** before scanning any systems you don't own
-- Use only on your own networks or with explicit authorization
-- The developers assume no liability for misuse of this software
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+⚠️ **Unauthorized scanning of networks or systems may be illegal in your
+jurisdiction.** Always get proper authorization before conducting any
+security testing.
 
 ## Acknowledgments
 
-- Thanks to the DearPyGui team for the excellent GUI framework
-- Inspired by various open-source security tools
-
----
-
-⭐ If you find this project useful, please consider giving it a star on GitHub!
+- [DearPyGui](https://github.com/hoffstadt/DearPyGui) for the GUI framework
+- [python-nmap](https://pypi.org/project/python-nmap/) for the nmap wrapper

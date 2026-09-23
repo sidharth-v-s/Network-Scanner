@@ -1,133 +1,107 @@
-import nmap
-import requests
-import concurrent.futures
-import threading
+"""
+code.py — Backwards-compatible string-based wrappers around scan_engine.
 
-# Subdirectory Scanner Function
-def find_subdirectories(url, wordlist_file, callback=None,stopInstance = None):
-    results = []
-    
-    # Ensure the URL format ends with a '/'
-    if not url.endswith('/'):
-        url += '/'
-    
-    # Read the wordlist file with the appropriate encoding
-    try:
-        with open(wordlist_file, 'r', encoding='ISO-8859-1') as file:
-            subdirs = file.read().splitlines()
-    except FileNotFoundError:
-        results.append(f"Error: The file '{wordlist_file}' was not found.")
-        if callback:
-            callback("\n".join(results))
-        return results
-    except UnicodeDecodeError:
-        # Try with UTF-8 if ISO-8859-1 fails
-        try:
-            with open(wordlist_file, 'r', encoding='utf-8') as file:
-                subdirs = file.read().splitlines()
-        except UnicodeDecodeError:
-            results.append(f"Error: The file '{wordlist_file}' contains invalid characters.")
-            if callback:
-                callback("\n".join(results))
-            return results
+Kept so any external scripts importing `nmap_scan`, `port_scanner`, or
+`find_subdirectories` (the original v2 API) keep working. New code should
+use `scan_engine` directly for structured results.
+"""
 
-    results.append(f"Starting directory scan on: {url}\n")
-    if callback:
-        callback("\n".join(results))
+from scan_engine import (
+    host_discovery,
+    port_scan,
+    web_directory_scan,
+)
 
-    # Check each subdirectory in the wordlist
-    found_count = 0
-    for subdir in subdirs:
-        if not stopInstance.scan:
-            print('end thred')
-            break
-        if not subdir.strip():  # Skip empty lines
-            continue
-            
-        full_url = f"{url}{subdir}"
-        try:
-            response = requests.get(full_url, timeout=5)
-            # If response code is 200, directory likely exists
-            if response.status_code == 200:
-                found_count += 1
-                results.append(f"Found: {full_url}")
-                if callback and found_count % 5 == 0:  # Update UI every 5 findings
-                    callback("\n".join(results))
-        except requests.RequestException as e:
-            results.append(f"Error reaching {full_url}: {e}")
-            if callback and found_count % 5 == 0:
-                callback("\n".join(results))
-    
-    results.append(f"\nScan complete. Found {found_count} directories.")
-    if callback:
-        callback("\n".join(results))
-    return results
 
-# Host Lookup Function
 def nmap_scan(subnet, callback=None):
-    results = []
-    results.append(f"Starting host lookup on subnet: {subnet}")
+    lines = [f"Starting host lookup on subnet: {subnet}"]
     if callback:
-        callback("\n".join(results))
-        
-    try:
-        nm = nmap.PortScanner()
-        nm.scan(hosts=subnet, arguments='-sn')
-        up_hosts = [host for host in nm.all_hosts() if nm[host].state() == 'up']
-        
-        if up_hosts:
-            results.append("Hosts found:")
-            for host in up_hosts:
-                results.append(host)
-        else:
-            results.append("No hosts found.")
-    except Exception as e:
-        results.append(f"Error during host lookup: {str(e)}")
-    
-    if callback:
-        callback("\n".join(results))
-    return results
+        callback("\n".join(lines))
 
-# Port Scanner Function
-def port_scanner(port_ip, callback=None):
-    results = []
-    results.append(f"Starting port scan on IP: {port_ip}")
+    def on_event(evt):
+        if evt["kind"] == "error":
+            lines.append(f"Error: {evt['message']}")
+        elif evt["kind"] == "host_found":
+            h = evt["host"]
+            line = f"IP: {h.ip}"
+            if h.hostname:
+                line += f", Hostname: {h.hostname}"
+            if h.mac:
+                line += f", MAC: {h.mac}"
+            if h.vendor:
+                line += f", Vendor: {h.vendor}"
+            lines.append(line)
+        if callback:
+            callback("\n".join(lines))
+
+    results = host_discovery(subnet, on_event=on_event)
+    if not results:
+        lines.append("No hosts found.")
+        if callback:
+            callback("\n".join(lines))
+    return lines
+
+
+def port_scanner(port_ip, callback=None, scan_type="-A -T4"):
+    lines = [f"Starting port scan on IP: {port_ip}", f"Scan type: {scan_type}"]
     if callback:
-        callback("\n".join(results))
-        
-    try:
-        np = nmap.PortScanner()
-        np.scan(port_ip, arguments='-sV -p 80,20,21,22,23,25,53,110,443,66,8000 -T4')
-        
-        for proto in np[port_ip].all_protocols():
-            lport = np[port_ip][proto].keys()
-            for port in lport:
-                if np[port_ip][proto][port]['state'] == 'open':
-                    service = np[port_ip][proto][port]['name']
-                    version = np[port_ip][proto][port].get('version', 'unknown')
-                    results.append(f"Port {port} is open, Service: {service}, Version: {version}")
-        
-        # Try to get OS info if available
-        try:
-            if 'osmatch' in np[port_ip] and np[port_ip]['osmatch']:
-                os_info = np[port_ip]['osmatch'][0]['name']
-                results.append(f"OS: {os_info}")
-        except:
-            pass
-            
-        if len(results) == 1:  # Only the starting message
-            results.append("No open ports found.")
-            
-    except Exception as e:
-        results.append(f"Error during port scan: {str(e)}")
-    
+        callback("\n".join(lines))
+
+    def on_event(evt):
+        if evt["kind"] == "error":
+            lines.append(f"Error: {evt['message']}")
+            if callback:
+                callback("\n".join(lines))
+
+    result = port_scan(port_ip, on_event=on_event, scan_arguments=scan_type)
+    if result.error:
+        return lines
+
+    for p in result.ports:
+        lines.append(f"Port {p.port}/{p.protocol}: {p.state}, Service: {p.display_service}")
+    for os_match in result.os_matches:
+        lines.append(f"OS: {os_match['name']} (Accuracy: {os_match['accuracy']}%)")
+    if result.mac:
+        lines.append(f"MAC Address: {result.mac}")
+    if result.vendor:
+        lines.append(f"Hardware Vendor: {result.vendor}")
+
     if callback:
-        callback("\n".join(results))
-    return results
+        callback("\n".join(lines))
+    return lines
+
+
+def find_subdirectories(url, wordlist_file, callback=None, stopInstance=None):
+    lines = [f"Starting directory scan on: {url}"]
+    if callback:
+        callback("\n".join(lines))
+
+    class _TokenAdapter:
+        def is_cancelled(self_inner):
+            return stopInstance is not None and not stopInstance.scan
+
+    def on_event(evt):
+        if evt["kind"] == "error":
+            lines.append(f"Error: {evt['message']}")
+        elif evt["kind"] == "dir_found":
+            d = evt["result"]
+            extra = f"     [Redirect to {d.redirect_to}]" if d.redirect_to else ""
+            lines.append(f"Found: {d.url}     [Status: {d.status}]{extra}")
+        if callback:
+            callback("\n".join(lines))
+
+    results = web_directory_scan(
+        url, wordlist_file, on_event=on_event,
+        cancel_token=_TokenAdapter() if stopInstance else None,
+    )
+    lines.append(f"\nScan complete. Found {len(results)} directories.")
+    if callback:
+        callback("\n".join(lines))
+    return lines
+
 
 if __name__ == "__main__":
-    print("Cybersecurity Tools")
-
+    print("Network Security Scanner — CLI mode")
     while True:
         print("\nSelect a tool:")
         print("1. Host Lookup")
@@ -140,20 +114,15 @@ if __name__ == "__main__":
         if choice == "1":
             subnet = input("Enter IP Subnet (e.g., 192.168.1.0/24): ")
             print("\n".join(nmap_scan(subnet)))
-
         elif choice == "2":
             port_ip = input("Enter IP Address for Port Scan: ")
             print("\n".join(port_scanner(port_ip)))
-
         elif choice == "3":
             url = input("Enter the base URL (e.g., https://example.com): ")
             wordlist_file = input("Enter the path to your wordlist file: ")
             print("\n".join(find_subdirectories(url, wordlist_file)))
-
         elif choice == "4":
             print("Exiting...")
             break
-
         else:
             print("Invalid choice. Please try again.")
- # type: ignore
